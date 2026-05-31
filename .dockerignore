@@ -1,0 +1,33 @@
+# Virtual environment — never copy this into Docker
+venv/
+
+# Python cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Raw dataset — too large, not needed at runtime
+data/
+
+# Git files
+.git/
+.gitignore
+
+# VS Code
+.vscode/
+
+# Notebooks
+notebooks/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Analysis scripts — not needed at runtime
+cache/threshold_analysis.py
+models/clustering.py
+embeddings/build_index.py
+
+# Plots — not needed at runtime
+*.png
