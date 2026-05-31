@@ -1,3 +1,12 @@
+---
+title: Smart Semantic Search
+emoji: 🔍
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+pinned: false
+---
+
 # Smart Semantic Search System
 
 A semantic search pipeline over the 20 Newsgroups dataset (~17,000 articles), featuring fuzzy clustering, a hand-built semantic cache, and a FastAPI service — fully containerised with Docker.
