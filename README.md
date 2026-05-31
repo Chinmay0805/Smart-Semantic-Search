@@ -268,3 +268,76 @@ Cache stats:
 
 ---
 
+Deployement STEP :
+
+
+Step 1: Prepare the Hugging Face Space
+Log in to your Hugging Face account and create a New Space.
+
+Name it (e.g., Semantic-Search).
+
+Select Docker as the Space SDK and choose the Blank template.
+
+Click Create Space.
+
+Step 2: Configure Your Project Files
+Before touching Git, ensure your core configuration files are ready for Hugging Face's environment.
+
+1. Update Dockerfile
+Hugging Face requires your app to run on port 7860. Ensure your final command looks like this:
+
+Dockerfile
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "7860"]
+2. Update README.md
+Add the required YAML configuration block to the very top of your README.md file (starting on line 1):
+
+YAML
+---
+title: Smart Semantic Search
+emoji: 🔍
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+pinned: false
+---
+3. Check Ignore Files
+Ensure that embeddings/chroma_db/ is not listed in your .gitignore or .dockerignore files, so the pre-built database can be uploaded.
+
+Step 3: Initialize Git and Git LFS
+Open your terminal in the root directory of your project (where the Dockerfile is) and run these commands to set up Git Large File Storage for all your models, datasets, and hidden database files.
+
+Bash
+# Initialize Git and LFS
+git init
+git lfs install
+
+# Track standard ML files
+git lfs track "*.npy"
+git lfs track "*.joblib"
+git lfs track "*.sqlite3"
+git lfs track "*.tar.gz"
+git lfs track "*.json"
+
+# Track hidden ChromaDB files
+git lfs track "*.bin"
+git lfs track "*.pickle"
+Step 4: Commit and Push
+Now, commit your code and push it to your Hugging Face Space using an Access Token as your password.
+
+Bash
+# 1. Commit the LFS tracking rules first
+git add .gitattributes
+git commit -m "Setup Git LFS rules"
+
+# 2. Add and commit the rest of your application code
+git add .
+git commit -m "Add application code and models"
+
+# 3. Rename branch to 'main' (if it defaulted to master)
+git branch -M main
+
+# 4. Link your local repository to Hugging Face
+git remote add huggingface https://huggingface.co/spaces/YOUR_USERNAME/YOUR_SPACE_NAME
+
+# 5. Push to Hugging Face
+git push -u huggingface main

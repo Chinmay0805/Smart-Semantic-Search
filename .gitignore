@@ -7,8 +7,7 @@ __pycache__/
 *.pyo
 
 # Large model/data files
-embeddings/chroma_db/
-embeddings/embeddings.npy
+
 *.tar.gz
 *.zip
 
