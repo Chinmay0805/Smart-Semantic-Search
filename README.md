@@ -7,111 +7,194 @@ sdk: docker
 pinned: false
 ---
 
-# Smart Semantic Search System
+# Smart Semantic Search
 
-A semantic search pipeline over the 20 Newsgroups dataset (~17,000 articles), featuring fuzzy clustering, a hand-built semantic cache, and a FastAPI service — fully containerised with Docker.
+A full-stack semantic search system over the **20 Newsgroups** dataset (~16,800 cleaned articles). The backend combines **SentenceTransformer** embeddings, **GMM-partitioned semantic caching**, and **ChromaDB** vector retrieval behind a **FastAPI** service. A **Next.js** frontend provides a minimalist search UI with pipeline visualization and collapsible diagnostics.
+
+> **Note:** This is retrieval-only — there is no LLM. On cache miss, the API returns the raw text of the most similar Usenet document from ChromaDB.
 
 ---
 
 ## Architecture
+
 ```
-User Query
+Browser (Next.js :3000)
+    ↓  REST / JSON
+[FastAPI :8000]
     ↓
-[FastAPI]         ← receives the HTTP request
+Embed query (all-MiniLM-L6-v2)
     ↓
-[Semantic Cache]  ← recognises similar past queries
-    ↓ (on cache miss)
-[ChromaDB]        ← vector similarity search
-    ↑
-[GMM Clusters]    ← partitions cache for O(n/k) lookup
+PCA → GMM dominant cluster
+    ↓
+[Semantic Cache]  ← cluster-partitioned, cosine similarity ≥ 0.60
+    ↓ (on miss)
+[ChromaDB]        ← top-1 cosine vector search
 ```
 
 ---
 
 ## Project Structure
+
 ```
 Smart-Semantic-Search/
-├── api/
-│   ├── __init__.py            # package marker
-│   ├── cache.py               # SemanticCache — built from scratch
-│   ├── models.py              # Pydantic schemas
-│   └── main.py                # FastAPI app
-├── embeddings/
-│   ├── build_index.py         # clean → embed → store pipeline
-│   ├── chroma_db/             # persisted vector database
-│   ├── embeddings.npy         # raw document embeddings
-│   └── texts.json             # cleaned texts + metadata
-├── models/
-│   ├── clustering.py          # GMM fuzzy clustering
-│   ├── gmm_model.joblib       # trained GMM
-│   ├── pca_model.joblib       # PCA transformer
-│   ├── gmm_assignments.npy    # soft cluster probabilities
-│   └── bic_curve.png          # BIC/AIC model selection plot
-├── cache/
-│   ├── threshold_analysis.py  # threshold exploration
-│   └── threshold_analysis.png # hit rate vs precision plot
-├── dataset/                      # raw dataset (not committed)
-├── requirements.txt
-├── Dockerfile
-├── .dockerignore
-└── .gitignore
+├── backend/
+│   ├── api/
+│   │   ├── main.py              # FastAPI app, CORS, endpoints
+│   │   └── models.py            # Pydantic request/response schemas
+│   ├── cache/
+│   │   ├── cache.py             # SemanticCache (built from scratch)
+│   │   └── threshold_analysis.py
+│   ├── embeddings/
+│   │   ├── build_index.py       # clean → embed → ChromaDB pipeline
+│   │   ├── chroma_db/           # persisted vector database
+│   │   ├── embeddings.npy
+│   │   └── texts.json
+│   ├── models/
+│   │   ├── clustering.py        # PCA + GMM training
+│   │   ├── gmm_model.joblib
+│   │   ├── pca_model.joblib
+│   │   └── bic_curve.png
+│   ├── dataset/                 # raw 20 Newsgroups data
+│   ├── requirements.txt
+│   └── Dockerfile
+├── frontend/
+│   ├── src/
+│   │   ├── app/
+│   │   │   ├── page.tsx         # main search page
+│   │   │   ├── layout.tsx
+│   │   │   └── globals.css
+│   │   ├── components/
+│   │   │   ├── SearchPanel.tsx
+│   │   │   ├── PipelineProgress.tsx
+│   │   │   └── DiagnosticsDrawer.tsx
+│   │   └── services/
+│   │       └── api.ts           # typed FastAPI client
+│   └── package.json
+└── README.md
 ```
 
 ---
 
-## Quickstart (Local)
+## Quickstart (Full Stack — Local)
 
-**1. Clone & setup**
+### Prerequisites
+
+- Python 3.10+
+- Node.js 18+
+- 4 GB RAM minimum
+- No GPU required
+
+### 1. Clone the repository
+
 ```bash
 git clone https://github.com/Chinmay0805/Smart-Semantic-Search.git
 cd Smart-Semantic-Search
+```
+
+### 2. Backend setup
+
+```bash
+cd backend
 python -m venv venv
 venv\Scripts\activate        # Windows
-# source venv/bin/activate   # Mac/Linux
+# source venv/bin/activate   # macOS / Linux
 pip install -r requirements.txt
 ```
 
-**2. Build the index**
+If the pre-built index and models are not present, run the offline pipelines from the `backend/` directory:
+
 ```bash
 python embeddings/build_index.py
-```
-
-**3. Run clustering**
-```bash
 python models/clustering.py
+python cache/threshold_analysis.py   # optional — generates analysis plots
 ```
 
-**4. Run threshold analysis**
+Start the API:
+
 ```bash
-python cache/threshold_analysis.py
+uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-**5. Start the API**
+- API: http://localhost:8000
+- Interactive docs: http://localhost:8000/docs
+
+### 3. Frontend setup
+
+In a second terminal:
+
 ```bash
-uvicorn api.main:app --host 0.0.0.0 --port 8000
+cd frontend
+npm install
+npm run dev
 ```
 
-API live at http://localhost:8000 — interactive docs at http://localhost:8000/docs
+- UI: http://localhost:3000
+
+The frontend defaults to `http://localhost:8000` for API calls. Override with a `.env.local` file:
+
+```env
+NEXT_PUBLIC_API_URL=http://localhost:8000
+```
+
+CORS is configured on the backend to allow `http://localhost:3000`.
 
 ---
 
-## Quickstart (Docker)
+## Frontend
+
+Built with **Next.js 15** (App Router), **TypeScript**, and **Tailwind CSS v4**.
+
+| Feature | Description |
+|---------|-------------|
+| Search hero | Large 56px input with example query links |
+| Pipeline progress | Step indicator during search: Embed → GMM → Cache → ChromaDB |
+| Results | Raw Usenet document text in a monospace panel |
+| Diagnostics drawer | Collapsible panel: cache hit/miss, similarity, cluster, latency, flush cache |
+| Connection status | `● Connected` / `● Offline` indicator |
+
+### Frontend scripts
+
 ```bash
-docker build -t trademarkia-semantic-search .
-docker run -p 8000:8000 trademarkia-semantic-search
+npm run dev      # development server
+npm run build    # production build
+npm run start    # serve production build
+npm run lint     # ESLint
 ```
 
 ---
 
 ## API Reference
 
-### `POST /query`
-Embeds the query, checks the semantic cache, returns a cached result on hit or searches ChromaDB on miss.
-```json
-// Request
-{ "query": "What are NASA's latest space missions?" }
+Base URL (local): `http://localhost:8000`
 
-// Cache miss response
+### `GET /` — Health check
+
+```json
+{
+  "status": "running",
+  "service": "Trademarkia Semantic Search",
+  "version": "1.0.0",
+  "cache": {
+    "total_entries": 0,
+    "hit_count": 0,
+    "miss_count": 0,
+    "hit_rate": 0.0
+  },
+  "docs": "http://localhost:8000/docs"
+}
+```
+
+### `POST /query` — Semantic search
+
+**Request:**
+
+```json
+{ "query": "What are NASA's latest space missions?" }
+```
+
+**Cache miss response:**
+
+```json
 {
   "query": "What are NASA's latest space missions?",
   "cache_hit": false,
@@ -120,8 +203,11 @@ Embeds the query, checks the semantic cache, returns a cached result on hit or s
   "result": "...",
   "dominant_cluster": 1
 }
+```
 
-// Cache hit response (different wording, same meaning)
+**Cache hit response:**
+
+```json
 {
   "query": "Recent space exploration news from NASA",
   "cache_hit": true,
@@ -133,6 +219,7 @@ Embeds the query, checks the semantic cache, returns a cached result on hit or s
 ```
 
 ### `GET /cache/stats`
+
 ```json
 {
   "total_entries": 42,
@@ -143,112 +230,64 @@ Embeds the query, checks the semantic cache, returns a cached result on hit or s
 ```
 
 ### `DELETE /cache`
-Flushes all entries and resets counters.
-```json
-{ "status": "cache flushed", "message": "All entries cleared and stats reset" }
-```
 
-### `GET /`
-Health check — returns service status and current cache stats.
+```json
+{
+  "status": "cache flushed",
+  "message": "All entries cleared and stats reset"
+}
+```
 
 ---
 
 ## Design Decisions
 
-### Part 1 — Embedding & Vector Database
+### Embedding & Vector Database
 
 | Decision | Choice | Reason |
 |---|---|---|
-| Embedding model | `all-MiniLM-L6-v2` | 384-dim dense vectors, best speed/quality tradeoff for semantic similarity, CPU-friendly |
-| Vector DB | ChromaDB | Serverless, persists to disk, native cosine similarity |
-| Min doc length | 100 chars | Docs shorter than this don't embed meaningfully |
-| Remove headers/footers | Yes | Adds noise, not semantic signal |
-| Result | 16,806 / 18,846 docs kept | 89% retention after cleaning |
+| Embedding model | `all-MiniLM-L6-v2` | 384-dim dense vectors; strong speed/quality tradeoff; CPU-friendly |
+| Vector DB | ChromaDB | Persists to disk; native cosine similarity |
+| Min doc length | 100 chars | Shorter docs don't embed meaningfully |
+| Remove headers/footers | Yes | Reduces noise in Usenet posts |
+| Retention | 16,806 / 18,846 docs | ~89% kept after cleaning |
 
----
+### Fuzzy Clustering (GMM)
 
-### Part 2 — Fuzzy Clustering
+**Why GMM over KMeans:** GMM assigns soft cluster probabilities. Ambiguous posts (e.g. politics vs. firearms) are captured as mixed memberships rather than forced hard labels.
 
-**Why GMM instead of KMeans:**
-In KMeans every document belongs to exactly one cluster.
-GMM produces a probability distribution over clusters. A post about gun legislation
-belongs ~60% to politics and ~40% to firearms. GMM captures this but KMeans cannot.
+**Why k = 10:** BIC was lowest at k = 10 across k ∈ [5, 40]. See `backend/models/bic_curve.png`.
 
-**Why k=10:**
-Fit GMM for k ∈ [5, 40]. BIC was lowest at k=10 — marginal improvement dropped
-below 1% of total BIC range beyond this point. Mathematical justification, not
-a convenience choice. See `models/bic_curve.png`.
+**PCA to 50 dimensions:** Full-covariance GMM on 384-dim vectors is intractable. PCA retains ~49.5% variance while making GMM feasible.
 
-**PCA to 50 dimensions:**
-Full covariance GMM on 384-dim vectors is computationally intractable.
-PCA to 50 dims retains sufficient structure (49.5% variance) for clean separation
-while making GMM feasible.
+| Cluster | Topic | Coherence |
+|---------|-------|-----------|
+| 0 | Marketplace | 0.114 |
+| 1 | Space & Science | 0.076 |
+| 2 | Religion | 0.171 |
+| 3 | Sports | 0.229 |
+| 4 | Politics & Law | 0.142 |
+| 5 | Hardware | 0.172 |
+| 6 | Cryptography | 0.233 |
+| 7 | Software | 0.131 |
+| 8 | Middle East | 0.270 |
+| 9 | Vehicles | 0.124 |
 
-**Cluster results:**
+### Semantic Cache
 
-| Cluster | Top Terms | Topic | Coherence |
-|---------|-----------|-------|-----------|
-| 0 | mail, sale, price, offer | Marketplace | 0.114 |
-| 1 | space, orbit, nasa | Space & Science | 0.076 |
-| 2 | god, jesus, bible, christian | Religion | 0.171 |
-| 3 | game, team, hockey, baseball | Sports | 0.229 |
-| 4 | people, gun, government, fbi | Politics & Law | 0.142 |
-| 5 | drive, card, scsi, mac, disk | Hardware | 0.172 |
-| 6 | key, encryption, clipper, nsa | Cryptography | 0.233 |
-| 7 | windows, file, program, dos | Software | 0.131 |
-| 8 | israel, jews, armenian, war | Middle East | 0.270 |
-| 9 | car, bike, engine, miles | Vehicles | 0.124 |
+- **Cluster-partitioned storage** — lookup scans only entries in the query's dominant GMM cluster (O(n/k) vs O(n))
+- **Similarity** — cosine via dot product on L2-normalized embeddings
+- **Thread safety** — `threading.Lock` on all cache reads/writes
+- **Threshold** — **0.60** (empirically tuned; see `backend/cache/threshold_analysis.png`)
 
-Cluster 8 (Middle East) is tightest at 0.270 — very focused domain.
-Cluster 1 (Space) is broadest at 0.076 — covers many sub-topics.
+| Threshold | Hit Rate | Precision |
+|-----------|----------|-----------|
+| 0.50 | 0.62 | 1.00 |
+| 0.65 | 0.25 | 1.00 |
+| 0.80+ | 0.00 | 0.00 |
 
-**Boundary documents:**
-Doc 4494 scored 41% Religion / 40% Politics. This is ambiguous content
-that a hard-label system would misclassify. These boundary cases are the most
-semantically interesting and validate the fuzzy approach.
+### Verified Results
 
----
-
-### Part 3 — Semantic Cache
-
-**Cluster-partitioned storage:**
-Entries are stored in `defaultdict(list)` keyed by dominant GMM cluster.
-Lookup only scans the same cluster as the incoming query — O(n/k) average
-cost instead of O(n). At 10,000 cached entries across 10 clusters, this
-means scanning ~1,000 entries instead of 10,000.
-
-**Similarity:** Cosine similarity via `numpy` dot product on L2-normalised vectors.
-Normalisation happens at embedding time so lookup is a single dot product.
-
-**Thread safety:** `threading.Lock` guards all reads and writes.
-FastAPI is async and handles concurrent requests — without locking,
-simultaneous cache writes would corrupt state.
-
-**Threshold analysis:**
-
-| Threshold | Hit Rate | Precision | Verdict |
-|-----------|----------|-----------|---------|
-| 0.50 | 0.62 | 1.00 |  Best balance |
-| 0.65 | 0.25 | 1.00 |  Misses valid paraphrases |
-| 0.80+ | 0.00 | 0.00 |  Cache never triggers |
-
-For `all-MiniLM-L6-v2`, paraphrases score 0.60–0.77 and unrelated queries
-score 0.04–0.10. Default threshold set to **0.60** based on this empirical analysis.
-See `cache/threshold_analysis.png`.
-
----
-
-### Part 4 — Docker
-
-**Base image:** `python:3.11-slim` — full Python 3.11 with ~200MB smaller footprint than the standard image.
-
-**CPU-only PyTorch:** Installed first via PyTorch's CPU wheel index. Avoids downloading GPU torch (915MB) + NVIDIA CUDA libraries (1.5GB total). CPU inference is fully sufficient here.
-
-**onnxruntime on Linux:** Docker containers run Linux via WSL2, even on Windows hosts. The Windows `onnxruntime==1.16.3` package doesn't exist for Linux — `onnxruntime==1.18.1` is installed separately as the correct Linux-compatible version.
-
----
-
-## Verified Results
 ```
 Query 1: "What are NASA latest space missions?"    → cache_hit: false
 Query 2: "Recent space exploration news from NASA" → cache_hit: true, similarity: 0.707
@@ -259,85 +298,87 @@ Cache stats:
 
 ---
 
-## Requirements
+## Docker (Backend Only)
 
-- Python 3.10+
-- 4GB RAM minimum
-- No GPU required
-- Docker Desktop (for containerised deployment)
+From the `backend/` directory:
+
+```bash
+docker build -t smart-semantic-search .
+docker run -p 7860:7860 smart-semantic-search
+```
+
+The container listens on port **7860** (Hugging Face Spaces default). For local use, map accordingly:
+
+```bash
+docker run -p 8000:7860 smart-semantic-search
+```
+
+**Image details:**
+
+- Base: `python:3.11-slim`
+- CPU-only PyTorch (no GPU/CUDA dependencies)
+- Linux-compatible `onnxruntime==1.18.1` installed separately
 
 ---
 
-Deployement STEP :
+## Deploy to Hugging Face Spaces
 
+### 1. Create a Space
 
-Step 1: Prepare the Hugging Face Space
-Log in to your Hugging Face account and create a New Space.
+Create a new Hugging Face Space with the **Docker** SDK and a blank template.
 
-Name it (e.g., Semantic-Search).
+### 2. Configure files
 
-Select Docker as the Space SDK and choose the Blank template.
+Ensure `backend/Dockerfile` exposes port 7860:
 
-Click Create Space.
-
-Step 2: Configure Your Project Files
-Before touching Git, ensure your core configuration files are ready for Hugging Face's environment.
-
-1. Update Dockerfile
-Hugging Face requires your app to run on port 7860. Ensure your final command looks like this:
-
-Dockerfile
+```dockerfile
 CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "7860"]
-2. Update README.md
-Add the required YAML configuration block to the very top of your README.md file (starting on line 1):
+```
 
-YAML
----
-title: Smart Semantic Search
-emoji: 🔍
-colorFrom: blue
-colorTo: indigo
-sdk: docker
-pinned: false
----
-3. Check Ignore Files
-Ensure that embeddings/chroma_db/ is not listed in your .gitignore or .dockerignore files, so the pre-built database can be uploaded.
+Keep the YAML frontmatter at the top of this `README.md` (required by Hugging Face).
 
-Step 3: Initialize Git and Git LFS
-Open your terminal in the root directory of your project (where the Dockerfile is) and run these commands to set up Git Large File Storage for all your models, datasets, and hidden database files.
+Ensure `embeddings/chroma_db/` is **not** excluded in `.gitignore` or `.dockerignore` so the pre-built index ships with the image.
 
-Bash
-# Initialize Git and LFS
-git init
+### 3. Set up Git LFS
+
+Large model and database files should be tracked with Git LFS:
+
+```bash
 git lfs install
-
-# Track standard ML files
 git lfs track "*.npy"
 git lfs track "*.joblib"
 git lfs track "*.sqlite3"
-git lfs track "*.tar.gz"
-git lfs track "*.json"
-
-# Track hidden ChromaDB files
 git lfs track "*.bin"
 git lfs track "*.pickle"
-Step 4: Commit and Push
-Now, commit your code and push it to your Hugging Face Space using an Access Token as your password.
+```
 
-Bash
-# 1. Commit the LFS tracking rules first
+### 4. Push to Hugging Face
+
+```bash
 git add .gitattributes
 git commit -m "Setup Git LFS rules"
-
-# 2. Add and commit the rest of your application code
 git add .
 git commit -m "Add application code and models"
-
-# 3. Rename branch to 'main' (if it defaulted to master)
 git branch -M main
-
-# 4. Link your local repository to Hugging Face
 git remote add huggingface https://huggingface.co/spaces/YOUR_USERNAME/YOUR_SPACE_NAME
-
-# 5. Push to Hugging Face
 git push -u huggingface main
+```
+
+For the frontend, deploy separately (e.g. Vercel) and set `NEXT_PUBLIC_API_URL` to your Hugging Face Space URL.
+
+---
+
+## Tech Stack
+
+| Layer | Technologies |
+|-------|-------------|
+| Backend | Python, FastAPI, Uvicorn, Sentence Transformers, ChromaDB, scikit-learn |
+| Frontend | Next.js 15, React 19, TypeScript, Tailwind CSS v4 |
+| ML | `all-MiniLM-L6-v2`, PCA, Gaussian Mixture Models |
+| Deployment | Docker, Hugging Face Spaces, Vercel (frontend) |
+
+---
+
+## License
+
+See repository for license details.
