@@ -1,23 +1,32 @@
-# Virtual environment
+# ========================
+# FRONTEND (Next.js/Node)
+# ========================
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.env*.local
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/.pnp.*
+frontend/.eslintcache
+
+# ========================
+# BACKEND (Python/FastAPI)
+# ========================
+backend/__pycache__/
+backend/*.py[cod]
+backend/*$py.class
 venv/
+backend/.env
+backend/.pytest_cache/
+backend/chroma_db/
+backend/embeddings/*.npy
 
-# Python cache
-__pycache__/
-*.pyc
-*.pyo
-
-# Large model/data files
-
-*.tar.gz
-*.zip
-
-# Data folder (too large for GitHub)
-
-dataset/
-
-# OS files
+# ========================
+# OS & EDITOR FILES
+# ========================
 .DS_Store
-Thumbs.db
-
-# VS Code
 .vscode/
+.idea/
+*.log
